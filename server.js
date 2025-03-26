@@ -15,6 +15,18 @@ const ROUND_TIME = 3000; // 3 seconds
 const rooms = new Map();
 const playerRooms = new Map(); // Track which room each player is in
 
+// Add this at the top with other room properties
+function createRoom() {
+    return {
+        players: [],
+        scores: {},
+        gameStarted: false,
+        playerRounds: {},
+        firstToFinish: null,
+        rematchRequests: new Set() // Track who has requested a rematch
+    };
+}
+
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
@@ -30,13 +42,7 @@ io.on('connection', (socket) => {
 
         // Create room if it doesn't exist
         if (!rooms.has(roomCode)) {
-            rooms.set(roomCode, {
-                players: [],
-                scores: {},
-                gameStarted: false,
-                playerRounds: {}, // Track individual player rounds
-                firstToFinish: null // Track who finished first
-            });
+            rooms.set(roomCode, createRoom());
         }
 
         const room = rooms.get(roomCode);
@@ -116,25 +122,41 @@ io.on('connection', (socket) => {
         startNewRound(socket.roomCode, socket.id);
     });
 
-    // Handle rematch request
+    // Update rematch request handler
     socket.on('request_rematch', () => {
         const room = rooms.get(socket.roomCode);
-        if (!room || room.players[0].id !== socket.id) return;
+        if (!room) return;
 
-        room.gameStarted = true;
-        room.scores = {};
-        room.playerRounds = {};
-        room.firstToFinish = null; // Reset first to finish
-        room.players.forEach(player => {
-            room.scores[player.id] = 0;
-            room.playerRounds[player.id] = 0;
-        });
+        // Add this player's rematch request
+        room.rematchRequests.add(socket.id);
 
-        io.to(socket.roomCode).emit('game_started');
-        // Start first round for all players
-        room.players.forEach(player => {
-            startNewRound(socket.roomCode, player.id);
-        });
+        // If all players have requested a rematch
+        if (room.rematchRequests.size === room.players.length) {
+            room.gameStarted = true;
+            room.scores = {};
+            room.playerRounds = {};
+            room.firstToFinish = null;
+            room.rematchRequests.clear(); // Clear rematch requests
+            
+            room.players.forEach(player => {
+                room.scores[player.id] = 0;
+                room.playerRounds[player.id] = 0;
+            });
+
+            io.to(socket.roomCode).emit('game_started');
+            // Start first round for all players
+            room.players.forEach(player => {
+                startNewRound(socket.roomCode, player.id);
+            });
+        } else {
+            // Notify other players that this player wants a rematch
+            io.to(socket.roomCode).emit('rematch_requested', {
+                playerId: socket.id,
+                playerName: room.players.find(p => p.id === socket.id)?.name,
+                totalRequests: room.rematchRequests.size,
+                totalPlayers: room.players.length
+            });
+        }
     });
 
     // Handle disconnection
@@ -172,6 +194,17 @@ function startNewRound(roomCode, playerId) {
         if (!room.firstToFinish) {
             room.firstToFinish = playerId;
         }
+
+        // Find opponent's status
+        const opponent = room.players.find(p => p.id !== playerId);
+        const opponentFinished = opponent ? room.playerRounds[opponent.id] > TOTAL_ROUNDS : false;
+        
+        // Send game finished status to the player who just finished
+        io.to(playerId).emit('player_finished', {
+            opponentFinished,
+            opponentName: opponent ? opponent.name : null,
+            scores: room.scores
+        });
 
         // Check if all players have finished
         const allPlayersFinished = room.players.every(

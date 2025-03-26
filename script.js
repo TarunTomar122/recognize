@@ -88,15 +88,72 @@ function initializeSocket() {
             stopRoundTimer();
             hideAllScreens();
             gameDiv.classList.add('active');
-            resultMessage.textContent = 'Waiting for opponent to finish...';
+
+            // Clear any existing game elements
+            const gameContainer = document.getElementById('game-container');
+            if (gameContainer) gameContainer.style.display = 'none';
+
+            // Show waiting message
+            resultMessage.style.display = 'block';
+            resultMessage.style.textAlign = 'center';
+            resultMessage.style.marginTop = '40px';
+            resultMessage.style.fontSize = '1.2em';
+            resultMessage.textContent = 'You finished! Waiting for opponent to finish...';
             resultMessage.className = 'success';
+
+            // Show current scores
+            // const scoreDiv = document.createElement('div');
+            // scoreDiv.style.marginTop = '20px';
+            // scoreDiv.style.fontSize = '1.1em';
+            //scoreDiv.textContent = `Current Score - You: ${player1Score.textContent} | Opponent: ${player2Score.textContent}`;
+            resultMessage.appendChild(scoreDiv);
             return;
         }
 
         currentRoundSpan.textContent = roundNumber;
         totalRoundsSpan.textContent = totalRounds;
-        startRoundTimer();
+        
+        // Make sure game container is visible for active rounds
+        const gameContainer = document.getElementById('game-container');
+        if (gameContainer) gameContainer.style.display = 'flex';
+        resultMessage.style.display = 'block';
+        resultMessage.textContent = '';
+        
         initGame();
+    });
+
+    socket.on('player_finished', ({ opponentFinished, opponentName, scores }) => {
+        hideAllScreens();
+        gameDiv.classList.add('active');
+        
+        // Create or get the waiting container
+        let waitingContainer = document.getElementById('waiting-container');
+        if (!waitingContainer) {
+            waitingContainer = document.createElement('div');
+            waitingContainer.id = 'waiting-container';
+            waitingContainer.style.textAlign = 'center';
+            waitingContainer.style.marginTop = '20px';
+            gameDiv.appendChild(waitingContainer);
+        }
+        
+        // Show appropriate message and scores
+        const myScore = scores[socket.id] || 0;
+        const opponentScore = opponentName ? scores[Object.keys(scores).find(id => id !== socket.id)] || 0 : 0;
+        
+        let statusHtml = `
+            <div class="success" style="font-size: 1.2em; margin-bottom: 20px;">
+                You've completed all rounds!<br>
+                ${opponentFinished ? 
+                    `${opponentName} has also finished!` : 
+                    `Waiting for ${opponentName} to finish...`}
+            </div>
+            <div style="font-size: 1.1em; margin-top: 10px;">
+                Current Scores:<br>
+                You: ${myScore} | ${opponentName}: ${opponentScore}
+            </div>
+        `;
+        
+        waitingContainer.innerHTML = statusHtml;
     });
 
     socket.on('round_timeout', () => {
@@ -113,6 +170,10 @@ function initializeSocket() {
         // Always show current player's score on the left
         player1Score.textContent = myScore;
         player2Score.textContent = opponentScore;
+    });
+
+    socket.on('rematch_requested', ({ playerName, totalRequests, totalPlayers }) => {
+        winnerMessage.textContent = `${playerName} wants a rematch! (${totalRequests}/${totalPlayers} players ready)`;
     });
 
     socket.on('game_over', ({ scores, players, firstToFinish }) => {
@@ -143,8 +204,9 @@ function initializeSocket() {
             winnerMessage.textContent = "It's a tie!";
         }
 
-        // Show rematch button only for player 1
-        rematchButton.style.display = isPlayer1 ? 'block' : 'none';
+        // Show rematch button for all players
+        rematchButton.style.display = 'block';
+        rematchButton.textContent = 'Request Rematch';
         
         // Reset finished state for next game
         hasFinishedAllRounds = false;
@@ -361,7 +423,7 @@ function showCorrectAnswersAndSkip() {
     // Move to next round after a brief delay
     setTimeout(() => {
         socket.emit('round_complete');
-    }, 1000);
+    }, 200);
 }
 
 // Initialize game
