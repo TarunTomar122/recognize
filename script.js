@@ -332,6 +332,9 @@ function getCorrectCells() {
 
 // Show correct answers and skip to next
 function showCorrectAnswersAndSkip() {
+    // Stop the timer immediately
+    stopRoundTimer();
+    
     const correctCells = getCorrectCells();
     
     // Remove any existing correct-answer highlights
@@ -384,6 +387,11 @@ async function initGame() {
     // Update UI with encoded path
     imageElement.src = `${DATASET_PATH}/train/${encodeURIComponent(currentImage.filename)}`;
     targetObjectSpan.textContent = currentObject;
+    
+    // Start timer only after image loads
+    imageElement.onload = () => {
+        startRoundTimer();
+    };
     
     // Log for debugging
     console.log('Loading image:', imageElement.src);
