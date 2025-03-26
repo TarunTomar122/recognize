@@ -13,6 +13,7 @@ const ROUND_TIME = 3000; // 3 seconds
 
 // Store active rooms and players
 const rooms = new Map();
+const playerRooms = new Map(); // Track which room each player is in
 
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
@@ -21,6 +22,12 @@ io.on('connection', (socket) => {
     socket.on('join_room', ({ roomCode, playerName }) => {
         roomCode = roomCode.toUpperCase();
         
+        // Check if player is already in a room
+        if (playerRooms.has(socket.id)) {
+            socket.emit('join_error', 'You are already in a room');
+            return;
+        }
+
         // Create room if it doesn't exist
         if (!rooms.has(roomCode)) {
             rooms.set(roomCode, {
@@ -40,6 +47,12 @@ io.on('connection', (socket) => {
             return;
         }
 
+        // Check if player is already in this room
+        if (room.players.some(p => p.id === socket.id)) {
+            socket.emit('join_error', 'You are already in this room');
+            return;
+        }
+
         // Add player to room
         socket.join(roomCode);
         room.players.push({
@@ -47,7 +60,8 @@ io.on('connection', (socket) => {
             name: playerName
         });
         room.scores[socket.id] = 0;
-        room.playerRounds[socket.id] = 0; // Initialize player round
+        room.playerRounds[socket.id] = 0;
+        playerRooms.set(socket.id, roomCode); // Track player's room
 
         // Notify room of player join
         io.to(roomCode).emit('player_joined', {
@@ -134,6 +148,7 @@ io.on('connection', (socket) => {
         room.players = room.players.filter(p => p.id !== socket.id);
         delete room.scores[socket.id];
         delete room.playerRounds[socket.id];
+        playerRooms.delete(socket.id); // Remove player from tracking
 
         if (room.players.length === 0) {
             rooms.delete(socket.roomCode);

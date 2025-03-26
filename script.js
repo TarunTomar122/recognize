@@ -8,6 +8,7 @@ let roomCode = '';
 let isPlayer1 = false;
 let timerInterval = null;
 let hasFinishedAllRounds = false;
+let isJoining = false; // Flag to prevent multiple join attempts
 
 // Constants
 const CELL_SIZE = 150; // 450px / 3
@@ -46,9 +47,13 @@ function initializeSocket() {
 
     socket.on('join_error', (message) => {
         lobbyMessage.textContent = message;
+        isJoining = false;
+        joinButton.disabled = false;
     });
 
     socket.on('player_joined', ({ players, scores }) => {
+        isJoining = false; // Reset joining flag
+        
         // Update player slots
         players.forEach((player, index) => {
             playerSlots[index].textContent = player.name;
@@ -63,6 +68,7 @@ function initializeSocket() {
         }
 
         isPlayer1 = players[0].id === socket.id;
+        lobbyMessage.textContent = ''; // Clear any messages
     });
 
     socket.on('can_start_game', () => {
@@ -201,6 +207,8 @@ function stopRoundTimer() {
 
 // Join room handler
 joinButton.addEventListener('click', () => {
+    if (isJoining) return; // Prevent multiple clicks
+    
     playerName = playerNameInput.value.trim();
     roomCode = roomCodeInput.value.trim();
 
@@ -209,6 +217,9 @@ joinButton.addEventListener('click', () => {
         return;
     }
 
+    isJoining = true;
+    joinButton.disabled = true;
+    lobbyMessage.textContent = 'Joining room...';
     socket.emit('join_room', { roomCode, playerName });
 });
 
